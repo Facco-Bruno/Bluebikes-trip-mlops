@@ -1,57 +1,77 @@
-import os
 import pandas as pd
 import pickle
-import mlflow
+import os
 from sklearn.feature_extraction import DictVectorizer
 from sklearn.linear_model import LinearRegression
-from sklearn.metrics import mean_squared_error, mean_absolute_error
+from sklearn.metrics import mean_squared_error
 
 
 def read_data(path):
     df = pd.read_parquet(path)
-    df['duration'] = (pd.to_datetime(df['ended_at']) - pd.to_datetime(df['started_at'])).dt.total_seconds() / 60
-    df = df[(df.duration >= 1) & (df.duration <= 120)].copy()
 
-    df['start_station_name'] = df['start_station_name'].fillna('unknown').astype(str)
-    df['end_station_name'] = df['end_station_name'].fillna('unknown').astype(str)
+    # Remover viagens com duração negativa ou zero
+    df = df[df['duration'] > 0].copy()
+
+    # Converter tipos para string e extrair hora
+    df['start_station_id'] = df['start_station_id'].astype(str)
+    df['end_station_id'] = df['end_station_id'].astype(str)
+    df['start_hour'] = pd.to_datetime(df['starttime']).dt.hour
 
     return df
 
 
-def train_and_log(df):
-    mlflow.set_tracking_uri("http://localhost:5000")
-    mlflow.set_experiment("bluebikes-duration-prediction")
+def prepare_features(df):
+    df['ride_id'] = df.index.astype(str)
+    features = ['start_station_id', 'end_station_id', 'start_hour']
+    dicts = df[features].to_dict(orient='records')
+    return dicts
 
-    with mlflow.start_run():
-        categorical = ['start_station_name', 'end_station_name']
-        train_dicts = df[categorical].to_dict(orient='records')
 
-        dv = DictVectorizer()
-        X_train = dv.fit_transform(train_dicts)
-        y_train = df["duration"].values
+def train_model(X_train, y_train):
+    dv = DictVectorizer()
+    X_train_transformed = dv.fit_transform(X_train)
 
-        lr = LinearRegression()
-        lr.fit(X_train, y_train)
+    model = LinearRegression()
+    model.fit(X_train_transformed, y_train)
 
-        y_pred = lr.predict(X_train)
-        rmse = mean_squared_error(y_train, y_pred, squared=False)
-        mae = mean_absolute_error(y_train, y_pred)
+    return model, dv
 
-        mlflow.log_metric("rmse", rmse)
-        mlflow.log_metric("mae", mae)
 
-        mlflow.sklearn.log_model(lr, "linear-model")
-        mlflow.log_artifact("dv.pkl")
+def evaluate(model, dv, X_val, y_val):
+    X_val_transformed = dv.transform(X_val)
+    y_pred = model.predict(X_val_transformed)
+    rmse = mean_squared_error(y_val, y_pred, squared=False)
+    print(f"✅ RMSE: {rmse:.2f}")
 
-        print(f"RMSE: {rmse:.2f}, MAE: {mae:.2f}")
 
-        with open("models/model.pkl", "wb") as f_out:
-            pickle.dump(lr, f_out)
+def save_artifacts(model, dv, output_path='models/model.bin'):
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    with open(output_path, 'wb') as f_out:
+        pickle.dump((dv, model), f_out)
+    print(f"📦 Modelo salvo em {output_path}")
 
-        with open("models/dv.pkl", "wb") as f_out:
-            pickle.dump(dv, f_out)
+
+def main():
+    df = read_data('data/2023-07-bluebikes-tripdata.parquet')
+
+    # Feature: duração da viagem em minutos
+    df['duration'] = (pd.to_datetime(df['stoptime']) - pd.to_datetime(df['starttime'])).dt.total_seconds() / 60
+
+    # Separar em treino e validação
+    n = len(df)
+    df_train = df.iloc[:int(0.8 * n)]
+    df_val = df.iloc[int(0.8 * n):]
+
+    X_train = prepare_features(df_train)
+    y_train = df_train['duration'].values
+
+    X_val = prepare_features(df_val)
+    y_val = df_val['duration'].values
+
+    model, dv = train_model(X_train, y_train)
+    evaluate(model, dv, X_val, y_val)
+    save_artifacts(model, dv)
+
 
 if __name__ == "__main__":
-    os.makedirs("models", exist_ok=True)
-    df = read_data("data/2023-07-bluebikes.parquet")
-    train_and_log(df)
+    main()
