@@ -28,7 +28,7 @@ def main():
     os.makedirs("data", exist_ok=True)
 
     csv_path = "data/202307-bluebikes-tripdata.csv"
-    parquet_path = "data/2023-07-bluebikes-tripdata.parquet"
+    parquet_path = "data/202307-bluebikes-tripdata.parquet"
 
     convert_csv_to_parquet(csv_path, parquet_path)
 
