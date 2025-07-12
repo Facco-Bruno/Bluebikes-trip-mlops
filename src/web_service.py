@@ -9,7 +9,7 @@ from typing import List
 app = FastAPI()
 
 # ✅ Carrega modelo treinado e DictVectorizer
-with open("models/modelo.bin", "rb") as f_in:
+with open("models/model.bin", "rb") as f_in:
     dv, model = pickle.load(f_in)
 
 # 🧾 Define estrutura de entrada esperada pela API
@@ -41,3 +41,5 @@ def predict_duration(data: Trips):
         })
 
     return {"results": results}
+
+# OPEN http://127.0.0.1:8000/docs after running the app
