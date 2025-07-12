@@ -2,3 +2,6 @@ fastapi
 uvicorn[standard]
 scikit-learn
 pandas
+evidently
+mlflow
+numpy
