@@ -7,23 +7,20 @@ from sklearn.feature_extraction import DictVectorizer
 from sklearn.linear_model import LinearRegression
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_squared_error
+from mlflow.models import infer_signature
+from mlflow.tracking import MlflowClient
 
 
 def preprocess_data(df):
     df = df.copy()
 
-    # 🕒 Converter para datetime
     df['started_at'] = pd.to_datetime(df['started_at'])
     df['ended_at'] = pd.to_datetime(df['ended_at'])
-
-    # 🧮 Calcular duração em minutos
     df = df[df['ended_at'] > df['started_at']].copy()
     df['duration'] = (df['ended_at'] - df['started_at']).dt.total_seconds() / 60
 
-    # ⏱️ Filtrar viagens muito curtas ou longas
     df = df[(df['duration'] >= 1) & (df['duration'] <= 60)]
 
-    # 🧹 Tratar colunas categóricas
     df['start_station_id'] = df['start_station_id'].fillna('unknown').astype(str)
     df['end_station_id'] = df['end_station_id'].fillna('unknown').astype(str)
 
@@ -33,7 +30,6 @@ def preprocess_data(df):
 def train_model(df, categorical):
     train_df, val_df = train_test_split(df, test_size=0.2, random_state=42)
 
-    # Preparar dados para treino
     train_dicts = train_df[categorical].to_dict(orient='records')
     val_dicts = val_df[categorical].to_dict(orient='records')
 
@@ -47,11 +43,10 @@ def train_model(df, categorical):
     model = LinearRegression()
     model.fit(X_train, y_train)
 
-    # Previsão e métrica
     y_pred = model.predict(X_val)
     rmse = math.sqrt(mean_squared_error(y_val, y_pred))
 
-    return model, dv, rmse
+    return model, dv, rmse, X_train
 
 
 def save_model(model, dv, path="models/model.bin"):
@@ -62,36 +57,49 @@ def save_model(model, dv, path="models/model.bin"):
 
 
 def main():
-    # 🚀 Setup MLflow
     mlflow.set_tracking_uri("http://127.0.0.1:5000")
     mlflow.set_experiment("bluebikes-duration-prediction")
 
-    # 📂 Carregar dados
     df = pd.read_parquet("data/202307-bluebikes-tripdata.parquet")
     df = preprocess_data(df)
-
-    # 🏷️ Colunas categóricas
     categorical = ['start_station_id', 'end_station_id']
 
     with mlflow.start_run():
+        model, dv, rmse, X_train = train_model(df, categorical)
 
-        # 🔁 Treinamento
-        model, dv, rmse = train_model(df, categorical)
-
-        # 📊 Log de parâmetros e métrica
         mlflow.set_tag("developer", "Bruno Facco")
         mlflow.log_param("model_type", "LinearRegression")
         mlflow.log_param("train_rows", df.shape[0])
         mlflow.log_param("categorical_features", ",".join(categorical))
         mlflow.log_metric("rmse", rmse)
 
-        # 💾 Log do modelo no MLflow
-        mlflow.sklearn.log_model(model, artifact_path="models")
+        # ➕ Adicionar assinatura e input example
+        signature = infer_signature(X_train, model.predict(X_train))
+        input_example = X_train[:5]
 
-        # 💾 Salvar modelo localmente
+        # 🔐 Registrar modelo com alias
+        mlflow.sklearn.log_model(
+            sk_model=model,
+            name="model",
+            input_example=input_example,
+            signature=signature,
+            registered_model_name="bluebikes-duration-model"
+        )
+
+        client = MlflowClient()
+        latest_version = client.get_latest_versions("bluebikes-duration-model", stages=["None"])[0].version
+
+        client.set_registered_model_alias(
+            name="bluebikes-duration-model",
+            alias="champion",
+            version=latest_version
+        )
+
+        # Salvar modelo local
         save_model(model, dv)
 
         print(f"📊 RMSE: {rmse:.2f}")
+        print(f"🏷️ Modelo registrado como versão {latest_version} com alias 'champion'")
 
 
 if __name__ == "__main__":
