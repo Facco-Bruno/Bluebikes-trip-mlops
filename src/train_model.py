@@ -3,33 +3,40 @@ import math
 import pickle
 import pandas as pd
 import mlflow
+from mlflow.models import infer_signature
+from mlflow.tracking import MlflowClient
+from mlflow.pyfunc import PythonModel
 from sklearn.feature_extraction import DictVectorizer
 from sklearn.linear_model import LinearRegression
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_squared_error
-from mlflow.models import infer_signature
-from mlflow.tracking import MlflowClient
+
+
+class DurationModelWrapper(PythonModel):
+    def __init__(self, model, dv):
+        self.model = model
+        self.dv = dv
+
+    def predict(self, context, model_input):
+        dicts = model_input[["start_station_id", "end_station_id"]].to_dict(orient="records")
+        X = self.dv.transform(dicts)
+        return self.model.predict(X)
 
 
 def preprocess_data(df):
     df = df.copy()
-
     df['started_at'] = pd.to_datetime(df['started_at'])
     df['ended_at'] = pd.to_datetime(df['ended_at'])
     df = df[df['ended_at'] > df['started_at']].copy()
     df['duration'] = (df['ended_at'] - df['started_at']).dt.total_seconds() / 60
-
     df = df[(df['duration'] >= 1) & (df['duration'] <= 60)]
-
     df['start_station_id'] = df['start_station_id'].fillna('unknown').astype(str)
     df['end_station_id'] = df['end_station_id'].fillna('unknown').astype(str)
-
     return df
 
 
 def train_model(df, categorical):
     train_df, val_df = train_test_split(df, test_size=0.2, random_state=42)
-
     train_dicts = train_df[categorical].to_dict(orient='records')
     val_dicts = val_df[categorical].to_dict(orient='records')
 
@@ -46,14 +53,14 @@ def train_model(df, categorical):
     y_pred = model.predict(X_val)
     rmse = math.sqrt(mean_squared_error(y_val, y_pred))
 
-    return model, dv, rmse, X_train
+    return model, dv, rmse, train_df[categorical]
 
 
-def save_model(model, dv, path="models/model.bin"):
+def save_model_local(model, dv, path="models/model.bin"):
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "wb") as f_out:
         pickle.dump((dv, model), f_out)
-    print(f"✅ Modelo salvo em: {path}")
+    print(f"✅ Modelo salvo localmente em: {path}")
 
 
 def main():
@@ -65,7 +72,7 @@ def main():
     categorical = ['start_station_id', 'end_station_id']
 
     with mlflow.start_run():
-        model, dv, rmse, X_train = train_model(df, categorical)
+        model, dv, rmse, train_input_df = train_model(df, categorical)
 
         mlflow.set_tag("developer", "Bruno Facco")
         mlflow.log_param("model_type", "LinearRegression")
@@ -73,14 +80,13 @@ def main():
         mlflow.log_param("categorical_features", ",".join(categorical))
         mlflow.log_metric("rmse", rmse)
 
-        # ➕ Adicionar assinatura e input example
-        signature = infer_signature(X_train, model.predict(X_train))
-        input_example = X_train[:5]
+        wrapped_model = DurationModelWrapper(model, dv)
+        input_example = train_input_df.iloc[:5]
+        signature = infer_signature(input_example, wrapped_model.predict(None, input_example))
 
-        # 🔐 Registrar modelo com alias
-        mlflow.sklearn.log_model(
-            sk_model=model,
+        mlflow.pyfunc.log_model(
             name="model",
+            python_model=wrapped_model,
             input_example=input_example,
             signature=signature,
             registered_model_name="bluebikes-duration-model"
@@ -88,16 +94,13 @@ def main():
 
         client = MlflowClient()
         latest_version = client.get_latest_versions("bluebikes-duration-model", stages=["None"])[0].version
-
         client.set_registered_model_alias(
             name="bluebikes-duration-model",
             alias="champion",
             version=latest_version
         )
 
-        # Salvar modelo local
-        save_model(model, dv)
-
+        save_model_local(model, dv)
         print(f"📊 RMSE: {rmse:.2f}")
         print(f"🏷️ Modelo registrado como versão {latest_version} com alias 'champion'")
 

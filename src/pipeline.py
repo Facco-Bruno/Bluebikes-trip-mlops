@@ -8,6 +8,22 @@ from datetime import datetime
 from evidently.report import Report
 from evidently.metrics import ColumnDriftMetric, DatasetDriftMetric, DatasetMissingValuesMetric, ColumnQuantileMetric
 
+import mlflow
+from mlflow.tracking import MlflowClient
+from mlflow.models import infer_signature
+import mlflow.pyfunc
+
+
+class DurationPredictionModel(mlflow.pyfunc.PythonModel):
+    def __init__(self, model, dv):
+        self.model = model
+        self.dv = dv
+
+    def predict(self, context, model_input):
+        X_dict = model_input.to_dict(orient="records")
+        X_vectorized = self.dv.transform(X_dict)
+        return self.model.predict(X_vectorized)
+
 
 @task
 def load_data(csv_path, parquet_path):
@@ -39,9 +55,6 @@ def preprocess_data(parquet_path):
 def train_model(df):
     from sklearn.feature_extraction import DictVectorizer
     from sklearn.linear_model import LinearRegression
-    import mlflow
-    from mlflow.tracking import MlflowClient
-    from mlflow.models import infer_signature
 
     mlflow.set_tracking_uri("http://127.0.0.1:5000")
     mlflow.set_experiment("bluebikes-duration-prediction")
@@ -51,25 +64,27 @@ def train_model(df):
     X_train = dv.fit_transform(train_dicts)
     y_train = df["duration"].values
 
-    with mlflow.start_run() as run:
+    lr = LinearRegression()
+    lr.fit(X_train, y_train)
+
+    y_pred = lr.predict(X_train)
+    rmse = math.sqrt(((y_train - y_pred) ** 2).mean())
+
+    signature = infer_signature(df[["start_station_id", "end_station_id"]], y_pred)
+
+    pipeline_model = DurationPredictionModel(model=lr, dv=dv)
+
+    with mlflow.start_run():
         mlflow.set_tag("developer", "Bruno Facco")
         mlflow.log_param("train_rows", df.shape[0])
         mlflow.log_param("model_type", "LinearRegression")
         mlflow.log_param("categorical_features", "start_station_id,end_station_id")
-
-        lr = LinearRegression()
-        lr.fit(X_train, y_train)
-
-        y_pred = lr.predict(X_train)
-        rmse = math.sqrt(((y_train - y_pred) ** 2).mean())
         mlflow.log_metric("rmse", rmse)
 
-        signature = infer_signature(X_train, y_pred)
-
-        mlflow.sklearn.log_model(
-            sk_model=lr,
-            name="model",
-            input_example=X_train[:5],
+        mlflow.pyfunc.log_model(
+            artifact_path="model",
+            python_model=pipeline_model,
+            input_example=df[["start_station_id", "end_station_id"]].iloc[:5],
             signature=signature,
             registered_model_name="bluebikes-duration-model"
         )
@@ -77,7 +92,6 @@ def train_model(df):
         client = MlflowClient()
         latest_version = client.get_latest_versions("bluebikes-duration-model", stages=["None"])[0].version
 
-        # ✅ Apenas alias
         client.set_registered_model_alias(
             name="bluebikes-duration-model",
             alias="champion",
@@ -101,22 +115,18 @@ def train_model(df):
 
 @task
 def batch_predict_from_registry(input_path, output_path):
-    import mlflow.sklearn
+    import mlflow.pyfunc
 
     os.makedirs(output_path, exist_ok=True)
 
-    # ✅ Usa alias
     model_uri = "models:/bluebikes-duration-model@champion"
-    model = mlflow.sklearn.load_model(model_uri)
-
-    with open("models/dv.bin", "rb") as f_in:
-        dv = pickle.load(f_in)
+    model = mlflow.pyfunc.load_model(model_uri)
 
     df = pd.read_parquet(input_path)
-    df["features"] = df[["start_station_id", "end_station_id"]].to_dict(orient="records")
-    X = dv.transform(df["features"])
-    df["predicted_duration"] = model.predict(X)
+    df_input = df[["start_station_id", "end_station_id"]].copy()
+    preds = model.predict(df_input)
 
+    df["predicted_duration"] = preds
     output_file = os.path.join(output_path, "predictions.parquet")
     df[["ride_id", "predicted_duration"]].to_parquet(output_file, index=False)
     print(f"✅ Previsões salvas em {output_file}")

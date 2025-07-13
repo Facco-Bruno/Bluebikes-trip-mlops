@@ -1,20 +1,17 @@
-# src/web_service.py
-
-import pickle
 import pandas as pd
 from fastapi import FastAPI
 from pydantic import BaseModel
 from typing import List
+import mlflow.pyfunc
 
 app = FastAPI()
 
-# ✅ Carrega modelo treinado e DictVectorizer
-with open("models/model.bin", "rb") as f_in:
-    dv, model = pickle.load(f_in)
+# ✅ Carrega modelo da MLflow Registry
+model_uri = "models:/bluebikes-duration-model@champion"
+model = mlflow.pyfunc.load_model(model_uri)
 
-# 🧾 Define estrutura de entrada esperada pela API
+# 🧾 Estrutura de entrada da API
 class Trip(BaseModel):
-    rideable_type: str
     start_station_id: str
     end_station_id: str
 
@@ -27,19 +24,17 @@ def home():
 
 @app.post("/predict")
 def predict_duration(data: Trips):
-    input_data = [trip.dict() for trip in data.trips]
+    # 👉 Converte entrada para DataFrame
+    input_df = pd.DataFrame([trip.dict() for trip in data.trips])
 
-    # 🔢 Transforma para o formato esperado
-    X = dv.transform(input_data)
-    preds = model.predict(X)
+    # ✅ O modelo já inclui o DictVectorizer internamente
+    preds = model.predict(input_df)
 
     results = []
-    for ride, pred in zip(input_data, preds):
+    for ride, pred in zip(input_df.to_dict(orient="records"), preds):
         results.append({
             "ride": ride,
             "predicted_duration": round(pred, 2)
         })
 
     return {"results": results}
-
-# OPEN http://127.0.0.1:8000/docs after running the app
