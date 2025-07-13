@@ -71,7 +71,6 @@ def train_model(df):
     rmse = math.sqrt(((y_train - y_pred) ** 2).mean())
 
     signature = infer_signature(df[["start_station_id", "end_station_id"]], y_pred)
-
     pipeline_model = DurationPredictionModel(model=lr, dv=dv)
 
     with mlflow.start_run():
@@ -135,6 +134,8 @@ def batch_predict_from_registry(input_path, output_path):
 
 @task
 def run_monitoring(reference_data, current_data, report_path):
+    import json
+
     df_ref = pd.read_parquet(reference_data)
     df_cur = pd.read_parquet(current_data)
 
@@ -157,10 +158,24 @@ def run_monitoring(reference_data, current_data, report_path):
 
     os.makedirs(os.path.dirname(report_path), exist_ok=True)
     report.save_html(report_path)
-    report.save_json(report_path.replace(".html", ".json"))
+    report_json_path = report_path.replace(".html", ".json")
+    report.save_json(report_json_path)
 
     print(f"📊 Report HTML salvo em {report_path}")
-    print(f"📄 Report JSON salvo em {report_path.replace('.html', '.json')}")
+    print(f"📄 Report JSON salvo em {report_json_path}")
+
+    # 🔍 Verificação de drift
+    with open(report_json_path) as f:
+        report_json = json.load(f)
+
+    try:
+        dataset_drift = report_json["metrics"][1]["result"]["dataset_drift"]
+        if dataset_drift:
+            print("⚠️ ALERTA: Drift detectado entre os dados atuais e os dados de referência.")
+        else:
+            print("✅ Nenhum drift detectado.")
+    except Exception as e:
+        print(f"❌ Erro ao verificar drift: {e}")
 
 
 @flow

@@ -12,6 +12,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY ./src ./src
 COPY ./models ./models
 
+# Define o MLflow Tracking URI apontando para o host
+ENV MLFLOW_TRACKING_URI=http://localhost:5000
+
 # Expõe a porta da API
 EXPOSE 8000
 

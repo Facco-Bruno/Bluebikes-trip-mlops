@@ -3,5 +3,6 @@ uvicorn[standard]
 scikit-learn
 pandas
 evidently
-mlflow
+mlflow[s3]   # Inclui suporte completo a storage backends
 numpy
+gunicorn     # (opcional para produção)
