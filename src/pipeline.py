@@ -3,10 +3,14 @@ import pandas as pd
 import pickle
 import os
 import math
-from datetime import datetime
 
 from evidently.report import Report
-from evidently.metrics import ColumnDriftMetric, DatasetDriftMetric, DatasetMissingValuesMetric, ColumnQuantileMetric
+from evidently.metrics import (
+    ColumnDriftMetric,
+    DatasetDriftMetric,
+    DatasetMissingValuesMetric,
+    ColumnQuantileMetric,
+)
 
 import mlflow
 from mlflow.tracking import MlflowClient
@@ -85,23 +89,25 @@ def train_model(df):
             python_model=pipeline_model,
             input_example=df[["start_station_id", "end_station_id"]].iloc[:5],
             signature=signature,
-            registered_model_name="bluebikes-duration-model"
+            registered_model_name="bluebikes-duration-model",
         )
 
         client = MlflowClient()
-        latest_version = client.get_latest_versions("bluebikes-duration-model", stages=["None"])[0].version
+        latest_version = client.get_latest_versions(
+            "bluebikes-duration-model", stages=["None"]
+        )[0].version
 
         client.set_registered_model_alias(
             name="bluebikes-duration-model",
             alias="champion",
-            version=latest_version
+            version=latest_version,
         )
 
         client.set_model_version_tag(
             name="bluebikes-duration-model",
             version=latest_version,
             key="model_source",
-            value="pipeline"
+            value="pipeline",
         )
 
         print(f"📊 RMSE: {rmse:.2f}")
@@ -144,15 +150,21 @@ def run_monitoring(reference_data, current_data, report_path):
     df_cur["started_at"] = pd.to_datetime(df_cur["started_at"])
     df_cur["ended_at"] = pd.to_datetime(df_cur["ended_at"])
 
-    df_ref["duration"] = (df_ref["ended_at"] - df_ref["started_at"]).dt.total_seconds() / 60
-    df_cur["duration"] = (df_cur["ended_at"] - df_cur["started_at"]).dt.total_seconds() / 60
+    df_ref["duration"] = (
+        df_ref["ended_at"] - df_ref["started_at"]
+    ).dt.total_seconds() / 60
+    df_cur["duration"] = (
+        df_cur["ended_at"] - df_cur["started_at"]
+    ).dt.total_seconds() / 60
 
-    report = Report(metrics=[
-        ColumnDriftMetric(column_name='duration'),
-        DatasetDriftMetric(),
-        DatasetMissingValuesMetric(),
-        ColumnQuantileMetric(column_name="duration", quantile=0.5)
-    ])
+    report = Report(
+        metrics=[
+            ColumnDriftMetric(column_name="duration"),
+            DatasetDriftMetric(),
+            DatasetMissingValuesMetric(),
+            ColumnQuantileMetric(column_name="duration", quantile=0.5),
+        ]
+    )
 
     report.run(reference_data=df_ref, current_data=df_cur)
 
@@ -164,14 +176,13 @@ def run_monitoring(reference_data, current_data, report_path):
     print(f"📊 Report HTML salvo em {report_path}")
     print(f"📄 Report JSON salvo em {report_json_path}")
 
-    # 🔍 Verificação de drift
     with open(report_json_path) as f:
         report_json = json.load(f)
 
     try:
         dataset_drift = report_json["metrics"][1]["result"]["dataset_drift"]
         if dataset_drift:
-            print("⚠️ ALERTA: Drift detectado entre os dados atuais e os dados de referência.")
+            print("⚠️ ALERTA: Drift detectado.")
         else:
             print("✅ Nenhum drift detectado.")
     except Exception as e:

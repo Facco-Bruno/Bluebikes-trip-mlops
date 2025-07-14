@@ -1,133 +1,179 @@
 # Bluebikes-trip-mlops
 
-Bluebikes Trip Duration Prediction — MLOps Project
+🚲 **Bluebikes Trip Duration Prediction — MLOps Project**
 
-Prediction of shared bike ride durations in Boston using a complete machine learning pipeline following MLOps best practices.
+> Final project for the [MLOps Zoomcamp](https://github.com/DataTalksClub/mlops-zoomcamp)
+> Author: [Bruno Facco](https://github.com/Facco-Bruno)
 
-Objective
-Build an end-to-end Machine Learning pipeline that:
-- Predicts ride duration based on start and end stations
-- Is reproducible, monitorable, testable, orchestrated, and deployable
+---
 
-Problem
-Bluebikes provides historical ride data with start and end stations across the city of Boston. The goal of this project is to accurately predict the ride duration in minutes based on origin and destination stations, in order to:
-- Plan bike redistribution routes
-- Optimize bike allocation
-- Inform users in real time
+## 🔍 Problem Description
 
-Project Structure
+Bluebikes is a public bike-sharing system in Boston that provides historical data about rides.
+The goal of this project is to **predict the duration of a bike ride (in minutes)** based on:
+
+- `start_station_id`
+- `end_station_id`
+
+This allows stakeholders to:
+
+- Optimize bike distribution logistics
+- Anticipate station congestion
+- Improve ETA predictions for users
+
+---
+
+## 🎯 Project Objective
+
+Build a complete, production-grade **ML pipeline** that is:
+
+- ✅ Reproducible
+- ✅ Monitored
+- ✅ Testable
+- ✅ Containerized
+- ✅ CI/CD ready
+- ✅ Deployable
+
+---
+
+## 🧱 Project Structure
 
 mlops-bluebikes/
-├── data/                   # Raw data (.parquet)
-├── models/                 # Saved models and vectorizers
-├── notebooks/              # EDA and validation notebooks
-├── src/                    # Main code (training, batch, monitoring)
+├── data/                   # Raw and processed data
+├── models/                 # Trained models and vectorizers
+├── monitoring/             # Drift reports (HTML + JSON)
+├── notebooks/              # EDA and validation
+├── src/                    # Core ML code: training, batch, service
 ├── tests/                  # Unit and integration tests
-├── docker/                 # Dockerfile and docker-compose
-├── .github/workflows/      # GitHub Actions CI/CD config
-├── Makefile                # Automation commands
-├── README.md               # This file
+├── .github/workflows/      # GitHub Actions CI config
+├── Makefile                # CLI shortcuts
+├── Dockerfile              # Docker container for FastAPI
+├── README.md               # Project guide
 
-MLOps Pipeline
+---
 
-Step                    | Tool
------------------------ | ------------------------------------
-Data ingestion          | pandas
-Model training          | scikit-learn, mlflow
-Batch inference         | batch.py script, LocalStack S3
-Orchestration           | Prefect
-Monitoring              | Evidently
-Testing                 | pytest, pre-commit
-CI/CD                   | GitHub Actions
-Containerization        | Docker, docker-compose
+## 🔧 MLOps Stack
 
-Dataset
+| Step                | Tool / Library                          |
+|---------------------|-----------------------------------------|
+| Experiment tracking | `MLflow` (tracking + registry)          |
+| Model training      | `scikit-learn`, `DictVectorizer`        |
+| Workflow orchestration | `Prefect`                          |
+| Monitoring          | `Evidently` (drift + missing values)    |
+| Model serving       | `FastAPI` + `Docker`                    |
+| CI/CD               | `GitHub Actions` + `pre-commit`         |
+| Testing             | `pytest`, `requests`                    |
+| Code quality        | `flake8`, `black`                       |
 
-- Source: https://bluebikes.com/system-data
-- File used: 2023-07-bluebikes-tripdata.csv
-- Features:
-    - start_station_name
-    - end_station_name
-- Target: ride duration (ended_at - started_at in minutes)
+---
 
-Model
+## 📦 Dataset
 
-- Algorithm: LinearRegression
-- Feature engineering:
-    - DictVectorizer for categorical features
-    - Station names converted to strings
-- Evaluation:
-    - MAE, RMSE (logged with MLflow)
-- Persistence:
-    - model.pkl, dv.pkl saved and versioned
+- Source: [Bluebikes System Data](https://bluebikes.com/system-data)
+- File used: `2023-07-bluebikes-tripdata.csv`
+- Main features: `start_station_id`, `end_station_id`
+- Target: Duration = `ended_at - started_at` (in minutes)
 
-How to Run
+---
 
-1. Install dependencies
+## 🤖 Model
 
-pip install -r requirements.txt
+- Algorithm: `LinearRegression`
+- Input: Station IDs (categorical, vectorized with `DictVectorizer`)
+- Output: Predicted ride duration in minutes
+- Evaluation: `RMSE`, `MAE` logged to MLflow
+- Registry: Registered as `bluebikes-duration-model@champion`
 
-2. Train the model
+---
 
-make train
+## 🚀 How to Run
 
-3. Run batch inference
+### 1. Clone and Install
 
-python src/batch.py 2023 07
+git clone https://github.com/Facco-Bruno/mlops-bluebikes.git
+cd mlops-bluebikes
+make install
 
-4. View model metrics
+### 2. Run the Prefect pipeline
 
-mlflow ui
+python src/pipeline.py
 
-Monitoring
+### 3. Start the FastAPI container
 
-Evidently is used to generate reports for:
-- Feature drift (start_station, end_station)
-- Duration changes
-- Missing values
+docker build -t bluebikes-api .
+docker run \
+  --network=host \
+  -v $(pwd)/mlruns:/workspace/mlruns \
+  -e MLFLOW_TRACKING_URI=file:/workspace/mlruns \
+  bluebikes-api
 
-Reports available in HTML or triggered via Prefect/Evidently integration.
+### 4. Run tests & linter
 
-Testing
+make test
+make lint
 
-- Unit tests with pytest (tests/test_batch.py)
-- Integration tests using LocalStack (S3 mock)
-- Pre-commit hooks using black, flake8 and linter
+---
 
-Docker & Infrastructure
+## 🛠️ Makefile Commands
 
-- Dockerfile for environment setup
-- docker-compose.yaml includes:
-    - MLflow Tracking Server
-    - LocalStack for simulating AWS S3
-- Makefile with helpful shortcuts:
+| Command         | Description                          |
+|----------------|--------------------------------------|
+| `make install`  | Install dependencies                 |
+| `make train`    | Train the model                      |
+| `make lint`     | Run linter with flake8               |
+| `make test`     | Run unit and integration tests       |
+| `make monitor`  | Run Evidently monitoring report      |
 
-make train        # trains the model
-make batch        # runs batch inference
-make monitor      # executes monitoring
-make test         # runs tests
+---
 
-CI/CD
+## 📊 Monitoring
 
-- GitHub Actions running:
-    - Code linting (flake8)
-    - Automated testing
-    - Pre-commit checks
+- Drift and data quality metrics with `Evidently`
+- Drift detection based on `Wasserstein distance`
+- JSON and HTML reports saved in `monitoring/reports/`
+- Alert is printed in the pipeline when drift is detected
 
-Best Practices Checklist
+---
 
-- ✅ MLflow experiment tracking
-- ✅ Model registry and artifact storage
-- ✅ Batch deployment in Docker container
-- ✅ Monitoring with Evidently
-- ✅ Prefect orchestration
-- ✅ Unit and integration tests
-- ✅ Linter and code formatter
-- ✅ CI/CD with GitHub Actions
-- ✅ Clear and executable README
+## ✅ Testing
 
-Author: Bruno Facco  
+- Unit tests for each module in `tests/`
+- Integration test for FastAPI (`test_web_service.py`)
+- Executed via `pytest` and GitHub Actions
+- Pre-commit hooks check formatting & linting
 
-GitHub: https://github.com/Facco-Bruno  
+---
 
-Final project for the MLOps Zoomcamp course: https://github.com/DataTalksClub/mlops-zoomcamp
+## 🔄 CI/CD
+
+GitHub Actions pipeline runs on each push to `main`:
+
+- Installs and caches dependencies
+- Runs linter (`flake8`)
+- Runs pre-commit hooks (`black`, etc.)
+- Runs all tests
+
+File: `.github/workflows/ci.yml`
+
+---
+
+## ✅ Evaluation Checklist
+
+| Criteria                 | Status   |
+|--------------------------|----------|
+| Problem clearly defined  | ✅       |
+| Cloud/Infra used         | ✅ (Local MLflow with Docker, CI in GitHub Actions) |
+| Experiment tracking      | ✅ MLflow |
+| Model registry           | ✅       |
+| Workflow orchestration   | ✅ Prefect |
+| Model deployment         | ✅ Docker + FastAPI |
+| Monitoring               | ✅ Evidently |
+| Reproducibility          | ✅ Makefile, clear README |
+| Best practices           | ✅ Tests, lint, CI, pre-commit |
+
+---
+
+## 📎 Useful Links
+
+- 📂 GitHub: [Facco-Bruno/mlops-bluebikes](https://github.com/Facco-Bruno/mlops-bluebikes)
+- 📘 MLOps Zoomcamp: [Course Repo](https://github.com/DataTalksClub/mlops-zoomcamp)

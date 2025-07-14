@@ -1,11 +1,18 @@
 import pandas as pd
 from evidently.report import Report
-from evidently.metrics import ColumnDriftMetric, DatasetDriftMetric, DatasetMissingValuesMetric, ColumnQuantileMetric
+from evidently.metrics import (
+    ColumnDriftMetric,
+    DatasetDriftMetric,
+    DatasetMissingValuesMetric,
+    ColumnQuantileMetric,
+)
 from evidently.metric_preset import DataQualityPreset
 from pathlib import Path
 
 # ⚙️ Caminhos
-reference_path = "/workspaces/Bluebikes-trip-mlops/data/202307-bluebikes-tripdata.parquet"
+reference_path = (
+    "/workspaces/Bluebikes-trip-mlops/data/202307-bluebikes-tripdata.parquet"
+)
 current_path = "/workspaces/Bluebikes-trip-mlops/data/202307-bluebikes-tripdata.parquet"  # Simulando novo dado
 
 # 📊 Leitura
@@ -23,13 +30,15 @@ df_ref["duration"] = (df_ref["ended_at"] - df_ref["started_at"]).dt.total_second
 df_cur["duration"] = (df_cur["ended_at"] - df_cur["started_at"]).dt.total_seconds() / 60
 
 # 🧪 Report Evidently
-report = Report(metrics=[
-    ColumnDriftMetric(column_name='duration'),
-    DataQualityPreset(),
-    DatasetDriftMetric(),
-    DatasetMissingValuesMetric(),
-    ColumnQuantileMetric(column_name="duration", quantile=0.5)
-])
+report = Report(
+    metrics=[
+        ColumnDriftMetric(column_name="duration"),
+        DataQualityPreset(),
+        DatasetDriftMetric(),
+        DatasetMissingValuesMetric(),
+        ColumnQuantileMetric(column_name="duration", quantile=0.5),
+    ]
+)
 
 # 🚀 Gerando relatório
 report.run(reference_data=df_ref, current_data=df_cur)

@@ -7,8 +7,16 @@ import mlflow.pyfunc
 
 
 @click.command()
-@click.option("--input_path", help="Caminho do arquivo parquet de entrada", required=True)
-@click.option("--output_path", help="Caminho do arquivo parquet de saída", required=True)
+@click.option(
+    "--input_path",
+    help="Caminho do arquivo parquet de entrada",
+    required=True,
+)
+@click.option(
+    "--output_path",
+    help="Caminho do arquivo parquet de saída",
+    required=True,
+)
 def batch_predict(input_path, output_path):
     print(f"📂 Lendo dados de entrada de: {input_path}")
     df = pd.read_parquet(input_path)

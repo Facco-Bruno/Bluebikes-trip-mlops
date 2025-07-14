@@ -10,17 +10,21 @@ app = FastAPI()
 model_uri = "models:/bluebikes-duration-model@champion"
 model = mlflow.pyfunc.load_model(model_uri)
 
+
 # 🧾 Estrutura de entrada da API
 class Trip(BaseModel):
     start_station_id: str
     end_station_id: str
 
+
 class Trips(BaseModel):
     trips: List[Trip]
+
 
 @app.get("/")
 def home():
     return {"message": "🚲 Bluebikes duration prediction API online!"}
+
 
 @app.post("/predict")
 def predict_duration(data: Trips):
@@ -32,9 +36,6 @@ def predict_duration(data: Trips):
 
     results = []
     for ride, pred in zip(input_df.to_dict(orient="records"), preds):
-        results.append({
-            "ride": ride,
-            "predicted_duration": round(pred, 2)
-        })
+        results.append({"ride": ride, "predicted_duration": round(pred, 2)})
 
     return {"results": results}

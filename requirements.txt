@@ -6,3 +6,6 @@ evidently
 mlflow[s3]   # Inclui suporte completo a storage backends
 numpy
 gunicorn     # (opcional para produção)
+pytest
+ruff
+flake8
